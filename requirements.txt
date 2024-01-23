@@ -8,3 +8,4 @@ pyarrow
 textblob
 fastapi
 uvicorn
+folium
