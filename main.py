@@ -4,7 +4,8 @@ from sklearn.neighbors import NearestNeighbors
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
-
+import folium
+from folium import IFrame
 import numpy as np
 from pydantic import BaseModel
 
@@ -42,7 +43,29 @@ def format_table(data):
     table_html += "</table>"
     return table_html
 
-# Ruta para la página de inicio con formularios y resultados
+def generate_map(markers):
+    if not markers:
+        return ""
+
+    # Obtén la primera ubicación para centrar el mapa
+    first_marker = list(markers.values())[0]
+    map_center = [first_marker['latitude'], first_marker['longitude']]
+    
+    # Crea el mapa con el centro y un zoom adecuado
+    m = folium.Map(location=map_center, zoom_start=12)
+    
+    for marker in markers.values():
+        if 'latitude' in marker and 'longitude' in marker:
+            folium.Marker([marker['latitude'], marker['longitude']],
+                          popup=IFrame(f"<b>{marker.get('name', '')}</b><br/>{marker.get('address', '')}", width=250, height=150)).add_to(m)
+    
+
+    m = m._repr_html_()
+    m = m.replace('width:100%;', 'width:80%;height:80%;')
+    return m
+
+
+
 @app.get("/", response_class=HTMLResponse)
 async def read_root(latitud: float = None, longitud: float = None, latitud1: float = None, longitud1: float = None):
     result_cercania = None
@@ -53,6 +76,8 @@ async def read_root(latitud: float = None, longitud: float = None, latitud1: flo
 
     if latitud1 is not None and longitud1 is not None:
         result_stars = await Recomendacion(latitud1, longitud1)
+
+    map_html = generate_map(result_cercania) + generate_map(result_stars)
 
     return f"""
     <!DOCTYPE html>
@@ -122,12 +147,15 @@ async def read_root(latitud: float = None, longitud: float = None, latitud1: flo
             .result-table {{
                 margin-top: 20px;
             }}
+
+            #map {{
+                height: 300px; /* Ajusta la altura según tus preferencias */
+            }}
         </style>
     </head>
     <body>
         <header>
             <h1>Recomendación de Bares</h1>
-
             <h2>Modelo de ML y FastAPI</h2>
         </header>
         
@@ -159,6 +187,13 @@ async def read_root(latitud: float = None, longitud: float = None, latitud1: flo
             </div>
         </section>
         
+        <section>
+            <h2>Mapa con Ubicaciones Recomendadas</h2>
+            <div id="map">
+                {map_html}
+            </div>
+        </section>
+
         <footer>
             <p>&copy; 2024 Recomendación de Bares</p>
         </footer>
@@ -166,7 +201,6 @@ async def read_root(latitud: float = None, longitud: float = None, latitud1: flo
     </html>
     """
 
-# Primer modelo entrega recomendaciones por cercanía
 @app.get('/r.cercania')
 async def Recomendacion(latitud: float, longitud: float):
     try:
@@ -187,8 +221,6 @@ async def Recomendacion(latitud: float, longitud: float):
     except Exception as e:
         return {"error": str(e)}
 
-# Segundo modelo entrega recomendaciones por cercanía luego de haber filtrado el dataset
-# mediante el promedio de estrellas de los diferentes bares.
 @app.get('/r.stars')
 async def Recomendacion(latitud1: float, longitud1: float):
     try:
